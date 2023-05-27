@@ -2,6 +2,7 @@ package spectagular
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -79,7 +80,7 @@ func convertToValue(value string, kind reflect.Kind) (reflect.Value, error) {
 		v, err = strconv.ParseComplex(value, 128)
 		return reflect.ValueOf(v), err
 	}
-	return reflect.ValueOf(nil), errors.New("should not have made it here lol")
+	return reflect.ValueOf(nil), errors.New("unable to convert string to kind: " + kind.String())
 }
 
 type FieldTag[V any] struct {
@@ -101,13 +102,14 @@ type StructTag struct {
 }
 
 type FieldTagCache[T any] struct {
-	tagNames     []string
+	tagName      string
 	typeToTags   map[reflect.Type][]FieldTag[T]
 	structTagMap map[string]StructTag
 	hasName      bool
+	requiredTags []string
 }
 
-func NewFieldTagCache[T any](tagName string, aliases ...string) (*FieldTagCache[T], error) {
+func NewFieldTagCache[T any](tagName string) (*FieldTagCache[T], error) {
 	defType := reflect.TypeOf(*new(T))
 	switch defType.Kind() {
 	case reflect.Struct:
@@ -123,6 +125,7 @@ func NewFieldTagCache[T any](tagName string, aliases ...string) (*FieldTagCache[
 	}
 	hasName := false
 	structTagMap := make(map[string]StructTag)
+	requiredTags := make([]string, 0)
 	for i := 0; i < defType.NumField(); i++ {
 		field := defType.Field(i)
 		if field.PkgPath != "" && !field.Anonymous {
@@ -136,8 +139,11 @@ func NewFieldTagCache[T any](tagName string, aliases ...string) (*FieldTagCache[
 			continue
 		}
 		switch fieldKind {
-		case reflect.Chan, reflect.Func, reflect.Interface, reflect.Invalid, reflect.Struct, reflect.Map, reflect.UnsafePointer:
-			continue
+		case reflect.Chan, reflect.Func, reflect.Interface, reflect.Invalid, reflect.Map, reflect.UnsafePointer:
+			// skip unsupported fields
+			if !field.Type.Implements(reflect.TypeOf((*TagValueResolver)(nil)).Elem()) {
+				continue
+			}
 		}
 		tags := field.Tag.Get(StructTagTag)
 		structTag := StructTag{FieldIndex: i}
@@ -157,14 +163,21 @@ func NewFieldTagCache[T any](tagName string, aliases ...string) (*FieldTagCache[
 				hasName = true
 			}
 			structTag.Resolver = getResolver(field.Type, structTag.Name, isArray)
+			if _, ok := structTagMap[structTag.Name]; ok {
+				return nil, errors.New("tag '" + structTag.Name + "' is in use by multiple fields")
+			}
 			structTagMap[structTag.Name] = structTag
+			if structTag.Required {
+				requiredTags = append(requiredTags, structTag.Name)
+			}
 		}
 	}
 	return &FieldTagCache[T]{
-		tagNames:     append([]string{tagName}, aliases...),
+		tagName:      tagName,
 		typeToTags:   make(map[reflect.Type][]FieldTag[T]),
 		structTagMap: structTagMap,
 		hasName:      hasName,
+		requiredTags: requiredTags,
 	}, nil
 }
 
@@ -175,7 +188,7 @@ func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
 		rType = rType.Elem()
 	}
 	if kind != reflect.Struct {
-		return errors.New("FieldTagCache cannot parse non struct types")
+		return errors.New("FieldTagCache cannot cache non struct types")
 	}
 
 	var field reflect.StructField
@@ -184,9 +197,10 @@ func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
 	var valueStr string
 	var err error
 	fieldTags := make([]FieldTag[T], 0)
+	requiredTags := make([]string, 0)
 	for i := 0; i < rType.NumField(); i++ {
 		field = rType.Field(i)
-		tag = field.Tag.Get(t.tagNames[0])
+		tag = field.Tag.Get(t.tagName)
 		field = rType.Field(i)
 		if field.PkgPath != "" || field.Anonymous {
 			continue
@@ -218,7 +232,7 @@ func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
 						kv = untilNextQuoteRegex.FindStringSubmatchIndex(tag)
 						valueStr += tag[kv[2]:kv[3]]
 						if kv != nil && kv[3] > 0 && kv[3] > kv[2] && tag[kv[3]-1] == '\\' {
-							valueStr += "'"
+							valueStr = valueStr[:len(valueStr)-1] + "'"
 							tag = tag[kv[1]:]
 						} else {
 							break
@@ -248,7 +262,13 @@ func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
 							return err
 						}
 					} else {
-						ftv.Field(st.FieldIndex).Set(v)
+						if !v.CanConvert(ftv.Field(st.FieldIndex).Type()) {
+							return fmt.Errorf("unable to convert value of '%s' to type '%s' for field '%s'", ftv.Type().Field(st.FieldIndex).Name, ftv.Field(st.FieldIndex).Type(), field.Name)
+						}
+						ftv.Field(st.FieldIndex).Set(v.Convert(ftv.Field(st.FieldIndex).Type()))
+						if st.Required {
+							requiredTags = append(requiredTags, st.Name)
+						}
 					}
 				}
 			} else {
@@ -257,6 +277,20 @@ func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
 		}
 		ft.Value = *value
 		fieldTags = append(fieldTags, ft)
+	}
+	if len(requiredTags) != len(t.requiredTags) {
+		requiredMap := make(map[string]struct{})
+		for _, r := range t.requiredTags {
+			requiredMap[r] = struct{}{}
+		}
+		for _, r := range requiredTags {
+			delete(requiredMap, r)
+		}
+		requiredTags := make([]string, 0)
+		for r := range requiredMap {
+			requiredTags = append(requiredTags, r)
+		}
+		return fmt.Errorf("missing required tag fields: %s", requiredTags)
 	}
 	t.typeToTags[rType] = fieldTags
 	return nil
