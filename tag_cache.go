@@ -19,9 +19,10 @@ const (
 )
 
 var (
-	keyValueRegex       = regexp.MustCompile(`^(?:(\w+)=)?(.+)`)
-	untilNextCommaRegex = regexp.MustCompile(`^([^,]*),?`)
-	untilNextQuoteRegex = regexp.MustCompile(`^([^']*)'`)
+	keyValueRegex         = regexp.MustCompile(`^(?:(\w+)=)?(.+)`)
+	untilNextCommaRegex   = regexp.MustCompile(`^([^,]*),?`)
+	untilNextQuoteRegex   = regexp.MustCompile(`^([^']*)'`)
+	untilNextBracketRegex = regexp.MustCompile(`^([^\]]*)]`)
 )
 
 func convertToValue(value string, kind reflect.Kind) (reflect.Value, error) {
@@ -131,20 +132,6 @@ func NewFieldTagCache[T any](tagName string) (*FieldTagCache[T], error) {
 		if field.PkgPath != "" && !field.Anonymous {
 			continue
 		}
-		var isArray bool
-		fieldKind := field.Type.Kind()
-		if fieldKind == reflect.Array {
-			isArray = true
-			fieldKind = field.Type.Elem().Kind()
-			continue
-		}
-		switch fieldKind {
-		case reflect.Chan, reflect.Func, reflect.Interface, reflect.Invalid, reflect.Map, reflect.UnsafePointer:
-			// skip unsupported fields
-			if !field.Type.Implements(reflect.TypeOf((*TagValueResolver)(nil)).Elem()) {
-				continue
-			}
-		}
 		tags := field.Tag.Get(StructTagTag)
 		structTag := StructTag{FieldIndex: i}
 		for n, o := range append(strings.Split(tags, ","), strings.ToLower(field.Name)) {
@@ -159,10 +146,24 @@ func NewFieldTagCache[T any](tagName string) (*FieldTagCache[T], error) {
 			}
 		}
 		if structTag.Name != EmptyTag && structTag.Name != BlankTag && structTag.Name != SkipTag {
+			fieldKind := field.Type.Kind()
+			if fieldKind == reflect.Slice {
+				// just check for a 1d array, multidimensional arrays are not ideal for structtags imo
+				// and just wont be supported unless users decide to create their own resolvers
+				fieldKind = field.Type.Elem().Kind()
+			}
+			switch fieldKind {
+			case reflect.Slice, reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Invalid, reflect.Map, reflect.UnsafePointer:
+				// im unwilling to try to support the above types, so only solution is to create a custom resolver
+				// over a "raw" string value
+				if !field.Type.Implements(reflect.TypeOf((*TagValueResolver)(nil)).Elem()) {
+					return nil, fmt.Errorf("unsupported type for struct tag: %s", field.Type)
+				}
+			}
 			if structTag.Name == NameTag {
 				hasName = true
 			}
-			structTag.Resolver = getResolver(field.Type, structTag.Name, isArray)
+			structTag.Resolver = getResolver(field.Type, structTag.Name)
 			if _, ok := structTagMap[structTag.Name]; ok {
 				return nil, errors.New("tag '" + structTag.Name + "' is in use by multiple fields")
 			}
@@ -179,6 +180,33 @@ func NewFieldTagCache[T any](tagName string) (*FieldTagCache[T], error) {
 		hasName:      hasName,
 		requiredTags: requiredTags,
 	}, nil
+}
+
+func getNextTagValue(tag string) (string, string) {
+	valueStr := ""
+	var kv []int
+	if tag != EmptyTag && tag[0] == '\'' {
+		tag = tag[1:]
+		for {
+			kv = untilNextQuoteRegex.FindStringSubmatchIndex(tag)
+			valueStr += tag[kv[2]:kv[3]]
+			if kv != nil && kv[3] > 0 && kv[3] > kv[2] && tag[kv[3]-1] == '\\' {
+				valueStr = valueStr[:len(valueStr)-1] + "'"
+				tag = tag[kv[1]:]
+			} else {
+				break
+			}
+		}
+		if kv != nil {
+			tag = tag[kv[1]:]
+		}
+	} else {
+		kv = untilNextCommaRegex.FindStringSubmatchIndex(tag)
+		valueStart, valueEnd := kv[2], kv[3]
+		valueStr = strings.Replace(tag[valueStart:valueEnd], `\'`, `'`, -1)
+		tag = tag[kv[1]:]
+	}
+	return tag, valueStr
 }
 
 func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
@@ -226,13 +254,13 @@ func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
 			}
 			if valueEnd > 0 {
 				tag = tag[valueStart:valueEnd]
-				if tag[0] == '\'' {
+				if tag[0] == '[' {
 					tag = tag[1:]
 					for {
-						kv = untilNextQuoteRegex.FindStringSubmatchIndex(tag)
+						kv = untilNextBracketRegex.FindStringSubmatchIndex(tag)
 						valueStr += tag[kv[2]:kv[3]]
 						if kv != nil && kv[3] > 0 && kv[3] > kv[2] && tag[kv[3]-1] == '\\' {
-							valueStr = valueStr[:len(valueStr)-1] + "'"
+							valueStr = valueStr[:len(valueStr)-1] + "]"
 							tag = tag[kv[1]:]
 						} else {
 							break
@@ -241,13 +269,8 @@ func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
 					if kv != nil {
 						tag = tag[kv[1]:]
 					}
-					// } else if value[valueStart] == '[' {
-					// TODO: handle array?
 				} else {
-					kv = untilNextCommaRegex.FindStringSubmatchIndex(tag)
-					valueStart, valueEnd = kv[2], kv[3]
-					valueStr = strings.Replace(tag[valueStart:valueEnd], `\'`, `'`, -1)
-					tag = tag[kv[1]:]
+					tag, valueStr = getNextTagValue(tag)
 				}
 				if i == 0 && t.hasName {
 					key = NameTag
