@@ -1,6 +1,8 @@
 package spectagular
 
-import "reflect"
+import (
+	"reflect"
+)
 
 type TagValueResolver interface {
 	ResolveTagValue(field reflect.StructField, value string) (reflect.Value, error)
@@ -47,6 +49,37 @@ func (p *pointerResolver) ResolveTagValue(field reflect.StructField, valueStr st
 	return value, err
 }
 
+// arrayResolver is used to parse anything as an array
+type sliceResolver struct {
+	resolver       TagValueResolver
+	underlyingType reflect.Type
+}
+
+func (s *sliceResolver) ResolveTagValue(field reflect.StructField, tag string) (reflect.Value, error) {
+	valueStr := ""
+	value := reflect.MakeSlice(reflect.SliceOf(s.underlyingType), 0, 0)
+	if len(tag) > 0 {
+		if tag[0] == ',' {
+			tag = "," + tag
+		}
+		if tag[len(tag)-1] == ',' {
+			tag += ","
+		}
+	}
+	for tag != EmptyTag {
+		if tag[0] == ',' {
+			tag = tag[1:]
+		}
+		tag, valueStr = getNextTagValue(tag)
+		val, err := s.resolver.ResolveTagValue(field, valueStr)
+		if err != nil {
+			return reflect.ValueOf(nil), err
+		}
+		value = reflect.Append(value, val)
+	}
+	return value, nil
+}
+
 // defaultResolver is used to parse any other values
 type defaultResolver struct {
 	kind reflect.Kind
@@ -56,18 +89,24 @@ func (d *defaultResolver) ResolveTagValue(field reflect.StructField, value strin
 	return convertToValue(value, d.kind)
 }
 
-func getResolver(fType reflect.Type, name string, isArray bool) TagValueResolver {
+func getResolver(fType reflect.Type, name string) TagValueResolver {
 	if name == NameTag {
 		return &nameResolver{
-			resolver: getResolver(fType, "", isArray),
+			resolver: getResolver(fType, ""),
 		}
 	}
 	if fType.Implements(reflect.TypeOf((*TagValueResolver)(nil)).Elem()) {
 		return reflect.New(fType).Interface().(TagValueResolver)
 	}
+	if fType.Kind() == reflect.Slice {
+		return &sliceResolver{
+			resolver:       getResolver(fType.Elem(), name),
+			underlyingType: fType.Elem(),
+		}
+	}
 	if fType.Kind() == reflect.Pointer {
 		return &pointerResolver{
-			resolver:       getResolver(fType.Elem(), name, isArray),
+			resolver:       getResolver(fType.Elem(), name),
 			underlyingType: fType,
 		}
 	}
