@@ -104,7 +104,7 @@ type FieldTag[V any] struct {
 }
 
 // StructTagOption is the definition of an option for a defined struct tag type. An example being how
-// encoding/json has "name", "required", "omitempty", and "string" as options.
+// encoding/json has "name", "omitempty", and "string" as options.
 type StructTagOption struct {
 	Name       string
 	Required   bool

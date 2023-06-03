@@ -14,19 +14,14 @@ type JSONStructTag struct {
 By using this package you could then parse any struct with `json` tags like so:
 
 ```go
-// create a tag cache that looks at "json" struct tags and convert them to the following format
-// would return a validation error if JSONStructTag was unparsable, but we are ignoring that for this example
-jsonTagCache, _ := spectagular.NewTagCache[JSONStructTag]("json")
-
 // an example of a typical struct with json tags
 type Person struct {
     Name string `json:",omitempty"`
     Age  int    `json:"age"`
 }
 
-// adding to the cache will parse the tags and save the values for later
-jsonTagCache.Add(reflect.TypeOf(&Person{}))
-// the cache will then contain FieldTags that are equivalent to:
+spectagular.ParseTagsForType(reflect.TypeOf(&Person{}))
+// this will return a []spectagular.FieldTag that is equivalent to:
 /*
 []FieldTag{{ 
     FieldName: "Name",
