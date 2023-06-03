@@ -20,7 +20,8 @@ type Person struct {
     Age  int    `json:"age"`
 }
 
-spectagular.ParseTagsForType(reflect.TypeOf(&Person{}))
+// look at the "json" struct tags and convert the options to type JSONStructTag
+spectagular.ParseTagsForType[JSONStructTag]("json", reflect.TypeOf(&Person{}))
 // this will return a []spectagular.FieldTag that is equivalent to:
 /*
 []FieldTag{{ 
