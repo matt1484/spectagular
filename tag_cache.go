@@ -10,12 +10,16 @@ import (
 )
 
 const (
-	EmptyTag     = ""
-	SkipTag      = "-"
-	BlankTag     = " "
+	// EmptyTag is used to denote a tag with nothing in it
+	EmptyTag = ""
+	// SkipTag is used to denote that the current field should not be used for parsing
+	SkipTag = "-"
+	// StructTagTag is the tag used by this package that defines the options for a struct tag field
 	StructTagTag = "structtag"
-	RequiredTag  = "required"
-	NameTag      = "$name"
+	// RequiredTag is used to denote a this struct tag field is required
+	RequiredTag = "required"
+	// NameTag is used to denote the first field (i.e. how its used for json, yaml, etc.)
+	NameTag = "$name"
 )
 
 var (
@@ -84,33 +88,44 @@ func convertToValue(value string, kind reflect.Kind) (reflect.Value, error) {
 	return reflect.ValueOf(nil), errors.New("unable to convert string to kind: " + kind.String())
 }
 
+// FieldTag[V any] is the parsed struct tag value for the struct field with the
+// corresponding name and index of said field as provided by "reflect".
 type FieldTag[V any] struct {
-	FieldName  string
+	// FieldName is the name of the field that these tags apply too. It is included
+	// since most of the time when you are parsing struct tags you need to know
+	// some limited information about the field.
+	FieldName string
+	// FieldIndex is the index of the field that these tags apply too. It is included
+	// since most of the time when you are parsing struct tags you need to know
+	// some limited information about the field.
 	FieldIndex int
-	Value      V
+	// Value is the parsed value of the struct tags for a field in a struct.
+	Value V
 }
 
-type TagOption struct {
-	Key   string
-	Value string
-}
-
-type StructTag struct {
+// StructTagOption is the definition of an option for a defined struct tag type. An example being how
+// encoding/json has "name", "required", "omitempty", and "string" as options.
+type StructTagOption struct {
 	Name       string
 	Required   bool
 	FieldIndex int
-	Resolver   TagValueResolver
+	Resolver   StructTagOptionUnmarshaler
 }
 
-type FieldTagCache[T any] struct {
+// StructTagCache[T any] is a cache for parsed struct tags. It is used to parse a struct's tag defined
+// by type T and store them as mapping of the struct's type to []FieldTag[T] for easy lookup later.
+// While tags could be parsed as needed, this struct is designed for workflows like encoding/json
+// where the same type may need its struct tags parsed more than once.
+type StructTagCache[T any] struct {
 	tagName      string
 	typeToTags   map[reflect.Type][]FieldTag[T]
-	structTagMap map[string]StructTag
+	structTagMap map[string]StructTagOption
 	hasName      bool
 	requiredTags []string
 }
 
-func NewFieldTagCache[T any](tagName string) (*FieldTagCache[T], error) {
+// NewFieldTagCache[T any] initializes a StructTagCache for type T.
+func NewFieldTagCache[T any](tagName string) (*StructTagCache[T], error) {
 	defType := reflect.TypeOf(*new(T))
 	switch defType.Kind() {
 	case reflect.Struct:
@@ -125,7 +140,7 @@ func NewFieldTagCache[T any](tagName string) (*FieldTagCache[T], error) {
 		return nil, errors.New("FieldTagCache needs a struct type for initialization")
 	}
 	hasName := false
-	structTagMap := make(map[string]StructTag)
+	structTagMap := make(map[string]StructTagOption)
 	requiredTags := make([]string, 0)
 	for i := 0; i < defType.NumField(); i++ {
 		field := defType.Field(i)
@@ -133,7 +148,7 @@ func NewFieldTagCache[T any](tagName string) (*FieldTagCache[T], error) {
 			continue
 		}
 		tags := field.Tag.Get(StructTagTag)
-		structTag := StructTag{FieldIndex: i}
+		structTag := StructTagOption{FieldIndex: i}
 		for n, o := range append(strings.Split(tags, ","), strings.ToLower(field.Name)) {
 			if n == 0 {
 				if o != "-" {
@@ -145,7 +160,7 @@ func NewFieldTagCache[T any](tagName string) (*FieldTagCache[T], error) {
 				}
 			}
 		}
-		if structTag.Name != EmptyTag && structTag.Name != BlankTag && structTag.Name != SkipTag {
+		if structTag.Name != EmptyTag && structTag.Name != SkipTag {
 			fieldKind := field.Type.Kind()
 			if fieldKind == reflect.Slice {
 				// just check for a 1d array, multidimensional arrays are not ideal for structtags imo
@@ -156,7 +171,7 @@ func NewFieldTagCache[T any](tagName string) (*FieldTagCache[T], error) {
 			case reflect.Slice, reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Invalid, reflect.Map, reflect.UnsafePointer:
 				// im unwilling to try to support the above types, so only solution is to create a custom resolver
 				// over a "raw" string value
-				if !field.Type.Implements(reflect.TypeOf((*TagValueResolver)(nil)).Elem()) {
+				if !field.Type.Implements(reflect.TypeOf((*StructTagOptionUnmarshaler)(nil)).Elem()) {
 					return nil, fmt.Errorf("unsupported type for struct tag: %s", field.Type)
 				}
 			}
@@ -173,7 +188,7 @@ func NewFieldTagCache[T any](tagName string) (*FieldTagCache[T], error) {
 			}
 		}
 	}
-	return &FieldTagCache[T]{
+	return &StructTagCache[T]{
 		tagName:      tagName,
 		typeToTags:   make(map[reflect.Type][]FieldTag[T]),
 		structTagMap: structTagMap,
@@ -209,7 +224,9 @@ func getNextTagValue(tag string) (string, string) {
 	return tag, valueStr
 }
 
-func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
+// Add parses the struct tags from the type given and adds them to the internal cache while
+// returning any validation errors found.
+func (t *StructTagCache[T]) Add(rType reflect.Type) error {
 	kind := rType.Kind()
 	if kind == reflect.Pointer || kind == reflect.Array {
 		kind = rType.Elem().Kind()
@@ -278,7 +295,7 @@ func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
 					key = valueStr
 				}
 				if st, ok := t.structTagMap[key]; ok {
-					v, err = st.Resolver.ResolveTagValue(field, valueStr)
+					v, err = st.Resolver.UnmarshalTagOption(field, valueStr)
 					if err != nil {
 						if st.Required {
 							// may potentially want to allow for a not-found error to be checked or something?
@@ -319,12 +336,15 @@ func (t *FieldTagCache[T]) Add(rType reflect.Type) error {
 	return nil
 }
 
-func (t *FieldTagCache[T]) Get(rType reflect.Type) ([]FieldTag[T], bool) {
+// Get returns a []FieldTag for a type if it is found in the cache.
+func (t *StructTagCache[T]) Get(rType reflect.Type) ([]FieldTag[T], bool) {
 	tags, ok := t.typeToTags[rType]
 	return tags, ok
 }
 
-func (t *FieldTagCache[T]) GetOrAdd(rType reflect.Type) ([]FieldTag[T], error) {
+// GetOrAdd returns a []FieldTag for a type if it is found in the cache and adds/returns it
+// otherwise.
+func (t *StructTagCache[T]) GetOrAdd(rType reflect.Type) ([]FieldTag[T], error) {
 	tags, ok := t.typeToTags[rType]
 	if !ok {
 		err := t.Add(rType)

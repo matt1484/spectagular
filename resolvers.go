@@ -6,21 +6,23 @@ import (
 	"time"
 )
 
-type TagValueResolver interface {
-	ResolveTagValue(field reflect.StructField, value string) (reflect.Value, error)
+// StructTagOptionUnmarshaler is an interface used to convert a string value extracted
+// from a field's struct tag options and convert it to its expected value.
+type StructTagOptionUnmarshaler interface {
+	UnmarshalTagOption(field reflect.StructField, value string) (reflect.Value, error)
 }
 
 // nameResolver is used to parse tags that use the first value as a "name"
 // and default to the field name (i.e. json, yaml, etc.)
 type nameResolver struct {
-	resolver TagValueResolver
+	resolver StructTagOptionUnmarshaler
 }
 
-func (n *nameResolver) ResolveTagValue(field reflect.StructField, value string) (reflect.Value, error) {
+func (n *nameResolver) UnmarshalTagOption(field reflect.StructField, value string) (reflect.Value, error) {
 	if value == EmptyTag {
-		return n.resolver.ResolveTagValue(field, field.Name)
+		return n.resolver.UnmarshalTagOption(field, field.Name)
 	}
-	return n.resolver.ResolveTagValue(field, value)
+	return n.resolver.UnmarshalTagOption(field, value)
 }
 
 // boolResolver is used to parse tags of boolean values. if the key is present it is set to true
@@ -28,7 +30,7 @@ type boolResolver struct {
 	key string
 }
 
-func (b *boolResolver) ResolveTagValue(field reflect.StructField, value string) (reflect.Value, error) {
+func (b *boolResolver) UnmarshalTagOption(field reflect.StructField, value string) (reflect.Value, error) {
 	if value == b.key {
 		return reflect.ValueOf(true), nil
 	}
@@ -37,12 +39,12 @@ func (b *boolResolver) ResolveTagValue(field reflect.StructField, value string) 
 
 // pointerResolver resolves a value and returns a pointer to it
 type pointerResolver struct {
-	resolver       TagValueResolver
+	resolver       StructTagOptionUnmarshaler
 	underlyingType reflect.Type
 }
 
-func (p *pointerResolver) ResolveTagValue(field reflect.StructField, valueStr string) (reflect.Value, error) {
-	v, err := p.resolver.ResolveTagValue(field, valueStr)
+func (p *pointerResolver) UnmarshalTagOption(field reflect.StructField, valueStr string) (reflect.Value, error) {
+	v, err := p.resolver.UnmarshalTagOption(field, valueStr)
 	if err != nil {
 		return reflect.ValueOf(nil), err
 	}
@@ -53,11 +55,11 @@ func (p *pointerResolver) ResolveTagValue(field reflect.StructField, valueStr st
 
 // arrayResolver is used to parse anything as an array
 type sliceResolver struct {
-	resolver       TagValueResolver
+	resolver       StructTagOptionUnmarshaler
 	underlyingType reflect.Type
 }
 
-func (s *sliceResolver) ResolveTagValue(field reflect.StructField, tag string) (reflect.Value, error) {
+func (s *sliceResolver) UnmarshalTagOption(field reflect.StructField, tag string) (reflect.Value, error) {
 	valueStr := ""
 	value := reflect.MakeSlice(reflect.SliceOf(s.underlyingType), 0, 0)
 	if len(tag) > 0 {
@@ -73,7 +75,7 @@ func (s *sliceResolver) ResolveTagValue(field reflect.StructField, tag string) (
 			tag = tag[1:]
 		}
 		tag, valueStr = getNextTagValue(tag)
-		val, err := s.resolver.ResolveTagValue(field, valueStr)
+		val, err := s.resolver.UnmarshalTagOption(field, valueStr)
 		if err != nil {
 			return reflect.ValueOf(nil), err
 		}
@@ -85,7 +87,7 @@ func (s *sliceResolver) ResolveTagValue(field reflect.StructField, tag string) (
 // durationResolver is used to parse a duration string
 type durationResolver struct{}
 
-func (d *durationResolver) ResolveTagValue(field reflect.StructField, value string) (reflect.Value, error) {
+func (d *durationResolver) UnmarshalTagOption(field reflect.StructField, value string) (reflect.Value, error) {
 	fmt.Println(value)
 	dur, err := time.ParseDuration(value)
 	return reflect.ValueOf(dur), err
@@ -96,18 +98,18 @@ type defaultResolver struct {
 	kind reflect.Kind
 }
 
-func (d *defaultResolver) ResolveTagValue(field reflect.StructField, value string) (reflect.Value, error) {
+func (d *defaultResolver) UnmarshalTagOption(field reflect.StructField, value string) (reflect.Value, error) {
 	return convertToValue(value, d.kind)
 }
 
-func getResolver(fType reflect.Type, name string) TagValueResolver {
+func getResolver(fType reflect.Type, name string) StructTagOptionUnmarshaler {
 	if name == NameTag {
 		return &nameResolver{
 			resolver: getResolver(fType, ""),
 		}
 	}
-	if fType.Implements(reflect.TypeOf((*TagValueResolver)(nil)).Elem()) {
-		return reflect.New(fType).Interface().(TagValueResolver)
+	if fType.Implements(reflect.TypeOf((*StructTagOptionUnmarshaler)(nil)).Elem()) {
+		return reflect.New(fType).Interface().(StructTagOptionUnmarshaler)
 	}
 	if fType == reflect.TypeOf(*new(time.Duration)) {
 		return &durationResolver{}
