@@ -3,6 +3,7 @@ package spectagular_test
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/matt1484/spectagular"
 )
@@ -23,7 +24,8 @@ type assertType interface {
 		float32 |
 		float64 |
 		complex64 |
-		complex128
+		complex128 |
+		time.Duration
 }
 
 func assertEqual[T assertType](t *testing.T, actual, expected T, message string) {
@@ -128,25 +130,26 @@ func (c CustomType) ResolveTagValue(field reflect.StructField, value string) (re
 
 func TestTypeConversion(t *testing.T) {
 	type TestTagTypes struct {
-		String     string     `structtag:"s"`
-		Bool       bool       `structtag:"b"`
-		Int        int        `structtag:"i"`
-		Int8       int8       `structtag:"i8"`
-		Int16      int16      `structtag:"i16"`
-		Int32      int32      `structtag:"i32"`
-		Int64      int64      `structtag:"i64"`
-		Uint       uint       `structtag:"u"`
-		Uint8      uint8      `structtag:"u8"`
-		Uint16     uint16     `structtag:"u16"`
-		Uint32     uint32     `structtag:"u32"`
-		Uint64     uint64     `structtag:"u64"`
-		Float32    float32    `structtag:"f32"`
-		Float64    float64    `structtag:"f64"`
-		Complex64  complex64  `structtag:"c64"`
-		Complex128 complex128 `structtag:"c128"`
-		CustomType CustomType `structtag:"ct"`
-		StringList []string   `structtag:"sa"`
-		IntList    []int      `structtag:"ia"`
+		String     string        `structtag:"s"`
+		Bool       bool          `structtag:"b"`
+		Int        int           `structtag:"i"`
+		Int8       int8          `structtag:"i8"`
+		Int16      int16         `structtag:"i16"`
+		Int32      int32         `structtag:"i32"`
+		Int64      int64         `structtag:"i64"`
+		Uint       uint          `structtag:"u"`
+		Uint8      uint8         `structtag:"u8"`
+		Uint16     uint16        `structtag:"u16"`
+		Uint32     uint32        `structtag:"u32"`
+		Uint64     uint64        `structtag:"u64"`
+		Float32    float32       `structtag:"f32"`
+		Float64    float64       `structtag:"f64"`
+		Complex64  complex64     `structtag:"c64"`
+		Complex128 complex128    `structtag:"c128"`
+		CustomType CustomType    `structtag:"ct"`
+		StringList []string      `structtag:"sa"`
+		IntList    []int         `structtag:"ia"`
+		Duration   time.Duration `structtag:"d"`
 	}
 	cache, _ := spectagular.NewFieldTagCache[TestTagTypes]("test")
 	// only going to test valid string representations
@@ -160,7 +163,12 @@ func TestTypeConversion(t *testing.T) {
 	if err != nil || tags == nil {
 		t.Error("TestTypeConversion: failed string tags validation", err.Error())
 	}
+	// only testing the field name/index here since it should be the same process for each
+	assertEqual(t, tags[0].FieldIndex, 0, "TestTypeConversion: wrong field index:")
+	assertEqual(t, tags[0].FieldName, "Empty", "TestTypeConversion: wrong field name:")
 	assertEqual(t, tags[0].Value.String, "", "TestTypeConversion: wrong parsed string value:")
+	assertEqual(t, tags[1].FieldIndex, 1, "TestTypeConversion: wrong field index:")
+	assertEqual(t, tags[1].FieldName, "String", "TestTypeConversion: wrong field name:")
 	assertEqual(t, tags[1].Value.String, "a string", "TestTypeConversion: wrong parsed string value:")
 	type TestBoolValid struct {
 		True         int `test:"b"`
@@ -185,6 +193,7 @@ func TestTypeConversion(t *testing.T) {
 		Complex64  int `test:"c64=-1,c128=2+3i"`
 		CustomType int `test:"ct=a value"`
 		Arrays     int `test:"sa=['quoted spaces',not quoted spaces,],ia=[-1,2]"`
+		Duration   int `test:"d=5h"`
 	}
 	tags, err = cache.GetOrAdd(reflect.TypeOf(TestOtherValid{}))
 	if err != nil || tags == nil {
@@ -209,4 +218,5 @@ func TestTypeConversion(t *testing.T) {
 	assertEqual(t, tags[5].Value.StringList[2], "", "TestTypeConversion: wrong parsed array value:")
 	assertEqual(t, tags[5].Value.IntList[0], -1, "TestTypeConversion: wrong parsed array value:")
 	assertEqual(t, tags[5].Value.IntList[1], 2, "TestTypeConversion: wrong parsed array value:")
+	assertEqual(t, tags[6].Value.Duration, 5*time.Hour, "TestTypeConversion: wrong parsed duration value:")
 }

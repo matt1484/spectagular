@@ -1,7 +1,9 @@
 package spectagular
 
 import (
+	"fmt"
 	"reflect"
+	"time"
 )
 
 type TagValueResolver interface {
@@ -80,6 +82,15 @@ func (s *sliceResolver) ResolveTagValue(field reflect.StructField, tag string) (
 	return value, nil
 }
 
+// durationResolver is used to parse a duration string
+type durationResolver struct{}
+
+func (d *durationResolver) ResolveTagValue(field reflect.StructField, value string) (reflect.Value, error) {
+	fmt.Println(value)
+	dur, err := time.ParseDuration(value)
+	return reflect.ValueOf(dur), err
+}
+
 // defaultResolver is used to parse any other values
 type defaultResolver struct {
 	kind reflect.Kind
@@ -97,6 +108,9 @@ func getResolver(fType reflect.Type, name string) TagValueResolver {
 	}
 	if fType.Implements(reflect.TypeOf((*TagValueResolver)(nil)).Elem()) {
 		return reflect.New(fType).Interface().(TagValueResolver)
+	}
+	if fType == reflect.TypeOf(*new(time.Duration)) {
+		return &durationResolver{}
 	}
 	if fType.Kind() == reflect.Slice {
 		return &sliceResolver{
