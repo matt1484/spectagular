@@ -352,3 +352,12 @@ func (t *StructTagCache[T]) GetOrAdd(rType reflect.Type) ([]FieldTag[T], error) 
 	}
 	return tags, nil
 }
+
+// ParseTagsForType[T any] parses the struct tags for a given type and converts them to type T.
+func ParseTagsForType[T any](tagName string, rType reflect.Type) ([]FieldTag[T], error) {
+	cache, err := NewFieldTagCache[T](tagName)
+	if err != nil {
+		return nil, err
+	}
+	return cache.GetOrAdd(rType)
+}
