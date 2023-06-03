@@ -7,6 +7,37 @@ import (
 	"github.com/matt1484/spectagular"
 )
 
+type assertType interface {
+	string |
+		bool |
+		int |
+		int8 |
+		int16 |
+		int32 |
+		int64 |
+		uint |
+		uint8 |
+		uint16 |
+		uint32 |
+		uint64 |
+		float32 |
+		float64 |
+		complex64 |
+		complex128
+}
+
+func assertEqual[T assertType](t *testing.T, actual, expected T, message string) {
+	if actual != expected {
+		t.Error(message, "actual:", actual, ", expected:", expected)
+	}
+}
+
+func assertNotEqual[T assertType](t *testing.T, actual, expected T, message string) {
+	if actual == expected {
+		t.Error(message, "actual:", actual, ", expected:", expected)
+	}
+}
+
 func TestNewTagCache(t *testing.T) {
 	type NewTest struct {
 		S string `structtag:"name"`
@@ -50,21 +81,13 @@ func TestQuotedTags(t *testing.T) {
 	for _, tag := range tags {
 		switch tag.FieldName {
 		case "Int":
-			if tag.Value.String != "123" {
-				t.Error("TestQuotedTags: wrong parsed value:", tag.Value.String, ", expected:", "123")
-			}
+			assertEqual(t, tag.Value.String, "123", "TestQuotedTags: wrong parsed value:")
 		case "Spaces":
-			if tag.Value.String != "with spaces" {
-				t.Error("TestQuotedTags: wrong parsed value:", tag.Value.String, ", expected:", "with spaces")
-			}
+			assertEqual(t, tag.Value.String, "with spaces", "TestQuotedTags: wrong parsed value:")
 		case "Empty":
-			if tag.Value.String != "" {
-				t.Error("TestQuotedTags: wrong parsed value:", tag.Value.String, ", expected:", "")
-			}
+			assertEqual(t, tag.Value.String, "", "TestQuotedTags: wrong parsed value:")
 		case "Escaped":
-			if tag.Value.String != "has'quotes'" {
-				t.Error("TestQuotedTags: wrong parsed value:", tag.Value.String, ", expected:", "has'quotes'")
-			}
+			assertEqual(t, tag.Value.String, "has'quotes'", "TestQuotedTags: wrong parsed value:")
 		}
 	}
 }
@@ -83,15 +106,9 @@ func TestSpecialTags(t *testing.T) {
 	if err != nil {
 		t.Error("TestSpecialTags: failed special tags validation", err.Error())
 	}
-	if tags[0].Value.Name != "name" {
-		t.Error("TestSpecialTags: wrong parsed value:", tags[0].Value.Name, ", expected:", "name")
-	}
-	if tags[0].Value.Required != "r" {
-		t.Error("TestSpecialTags: wrong parsed value:", tags[0].Value.Name, ", expected:", "r")
-	}
-	if *tags[0].Value.Pointer != "p" {
-		t.Error("TestSpecialTags: wrong parsed value:", *tags[0].Value.Pointer, ", expected:", "p")
-	}
+	assertEqual(t, tags[0].Value.Name, "name", "TestSpecialTags: wrong parsed value:")
+	assertEqual(t, tags[0].Value.Required, "r", "TestSpecialTags: wrong parsed value:")
+	assertEqual(t, *tags[0].Value.Pointer, "p", "TestSpecialTags: wrong parsed value:")
 	type TestSpecialStructInvalid struct {
 		Valid int `test:"name"`
 	}
@@ -105,7 +122,7 @@ type CustomType struct {
 	C string
 }
 
-func (c *CustomType) ResolveTagValue(field reflect.StructField, value string) (reflect.Value, error) {
+func (c CustomType) ResolveTagValue(field reflect.StructField, value string) (reflect.Value, error) {
 	return reflect.ValueOf(CustomType{C: value}), nil
 }
 
@@ -143,19 +160,27 @@ func TestTypeConversion(t *testing.T) {
 	if err != nil || tags == nil {
 		t.Error("TestTypeConversion: failed string tags validation", err.Error())
 	}
+	assertEqual(t, tags[0].Value.String, "", "TestTypeConversion: wrong parsed string value:")
+	assertEqual(t, tags[1].Value.String, "a string", "TestTypeConversion: wrong parsed string value:")
 	type TestBoolValid struct {
-		True    int `test:"b"`
-		False   int `test:"b=false"`
-		NotTrue int `test:"b=not true"`
-		Empty   int `test:""`
+		True         int `test:"b"`
+		False        int `test:"b=false"`
+		NotTrue      int `test:"b=not true"`
+		Empty        int `test:""`
+		TrueExplicit int `test:"b=true"`
 	}
 	tags, err = cache.GetOrAdd(reflect.TypeOf(TestBoolValid{}))
 	if err != nil || tags == nil {
 		t.Error("TestTypeConversion: failed bool tags validation", err.Error())
 	}
+	assertEqual(t, tags[0].Value.Bool, true, "TestTypeConversion: wrong parsed bool value:")
+	assertEqual(t, tags[1].Value.Bool, false, "TestTypeConversion: wrong parsed bool value:")
+	assertEqual(t, tags[2].Value.Bool, false, "TestTypeConversion: wrong parsed bool value:")
+	assertEqual(t, tags[3].Value.Bool, false, "TestTypeConversion: wrong parsed bool value:")
+	assertEqual(t, tags[4].Value.Bool, true, "TestTypeConversion: wrong parsed bool value:")
 	type TestOtherValid struct {
 		Ints       int `test:"i=-1,i8=2,i16=3,i32=4,i64=5"`
-		Uints      int `test:"ui=1,ui8=2,ui16=3,ui32=4,ui64=5"`
+		Uints      int `test:"u=1,u8=2,u16=3,u32=4,u64=5"`
 		Floats     int `test:"f32=-1.0,f64=2"`
 		Complex64  int `test:"c64=-1,c128=2+3i"`
 		CustomType int `test:"ct=a value"`
@@ -165,4 +190,23 @@ func TestTypeConversion(t *testing.T) {
 	if err != nil || tags == nil {
 		t.Error("TestTypeConversion: failed other tags validation", err.Error())
 	}
+	assertEqual(t, tags[0].Value.Int, -1, "TestTypeConversion: wrong parsed int value:")
+	assertEqual(t, tags[0].Value.Int8, 2, "TestTypeConversion: wrong parsed int value:")
+	assertEqual(t, tags[0].Value.Int16, 3, "TestTypeConversion: wrong parsed int value:")
+	assertEqual(t, tags[0].Value.Int32, 4, "TestTypeConversion: wrong parsed int value:")
+	assertEqual(t, tags[0].Value.Int64, 5, "TestTypeConversion: wrong parsed int value:")
+	assertEqual(t, tags[1].Value.Uint, 1, "TestTypeConversion: wrong parsed uint value:")
+	assertEqual(t, tags[1].Value.Uint8, 2, "TestTypeConversion: wrong parsed uint value:")
+	assertEqual(t, tags[1].Value.Uint16, 3, "TestTypeConversion: wrong parsed uint value:")
+	assertEqual(t, tags[1].Value.Uint32, 4, "TestTypeConversion: wrong parsed uint value:")
+	assertEqual(t, tags[2].Value.Float32, -1.0, "TestTypeConversion: wrong parsed float value:")
+	assertEqual(t, tags[2].Value.Float64, 2.0, "TestTypeConversion: wrong parsed float value:")
+	assertEqual(t, tags[3].Value.Complex64, -1, "TestTypeConversion: wrong parsed complex value:")
+	assertEqual(t, tags[3].Value.Complex128, 2+3i, "TestTypeConversion: wrong parsed complex value:")
+	assertEqual(t, tags[4].Value.CustomType.C, "a value", "TestTypeConversion: wrong parsed custom value:")
+	assertEqual(t, tags[5].Value.StringList[0], "quoted spaces", "TestTypeConversion: wrong parsed array value:")
+	assertEqual(t, tags[5].Value.StringList[1], "not quoted spaces", "TestTypeConversion: wrong parsed array value:")
+	assertEqual(t, tags[5].Value.StringList[2], "", "TestTypeConversion: wrong parsed array value:")
+	assertEqual(t, tags[5].Value.IntList[0], -1, "TestTypeConversion: wrong parsed array value:")
+	assertEqual(t, tags[5].Value.IntList[1], 2, "TestTypeConversion: wrong parsed array value:")
 }
