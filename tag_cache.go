@@ -18,7 +18,8 @@ const (
 	StructTagTag = "structtag"
 	// RequiredTag is used to denote a this struct tag field is required
 	RequiredTag = "required"
-	// NameTag is used to denote the first field (i.e. how its used for json, yaml, etc.)
+	// NameTag is used to denote the first field or the name of the field if empty
+	// (i.e. how its used for encoding/json, encoding/yaml, etc.).
 	NameTag = "$name"
 )
 

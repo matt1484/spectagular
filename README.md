@@ -27,11 +27,11 @@ spectagular.ParseTagsForType[JSONStructTag]("json", reflect.TypeOf(&Person{}))
 []FieldTag{{ 
     FieldName: "Name",
     FieldIndex: 0,
-    Value: JSONStructTag{ Name: "Name", OmitEmpty: true, String: true },
+    Value: JSONStructTag{ Name: "Name", OmitEmpty: true, String: false },
 }, {
     FieldName: "Age",
     FieldIndex: 1,
-    Value: JSONStructTag{ Name: "age", OmitEmpty: false, String: true },
+    Value: JSONStructTag{ Name: "age", OmitEmpty: false, String: false },
 }}
 */
 ```
