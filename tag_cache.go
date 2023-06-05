@@ -198,15 +198,18 @@ func NewFieldTagCache[T any](tagName string) (*StructTagCache[T], error) {
 	}, nil
 }
 
-func getNextTagValue(tag string) (string, string) {
+func getNextTagValue(tag string) (string, string, error) {
 	valueStr := ""
 	var kv []int
 	if tag != EmptyTag && tag[0] == '\'' {
 		tag = tag[1:]
 		for {
 			kv = untilNextQuoteRegex.FindStringSubmatchIndex(tag)
+			if kv == nil {
+				return "", "", errors.New("missing end quote on quoted string")
+			}
 			valueStr += tag[kv[2]:kv[3]]
-			if kv != nil && kv[3] > 0 && kv[3] > kv[2] && tag[kv[3]-1] == '\\' {
+			if kv[3] > 0 && kv[3] > kv[2] && tag[kv[3]-1] == '\\' {
 				valueStr = valueStr[:len(valueStr)-1] + "'"
 				tag = tag[kv[1]:]
 			} else {
@@ -222,7 +225,7 @@ func getNextTagValue(tag string) (string, string) {
 		valueStr = strings.Replace(tag[valueStart:valueEnd], `\'`, `'`, -1)
 		tag = tag[kv[1]:]
 	}
-	return tag, valueStr
+	return tag, valueStr, nil
 }
 
 // Add parses the struct tags from the type given and adds them to the internal cache while
@@ -276,8 +279,11 @@ func (t *StructTagCache[T]) Add(rType reflect.Type) error {
 					tag = tag[1:]
 					for {
 						kv = untilNextBracketRegex.FindStringSubmatchIndex(tag)
+						if kv == nil {
+							return errors.New("missing end quote on quoted string")
+						}
 						valueStr += tag[kv[2]:kv[3]]
-						if kv != nil && kv[3] > 0 && kv[3] > kv[2] && tag[kv[3]-1] == '\\' {
+						if kv[3] > 0 && kv[3] > kv[2] && tag[kv[3]-1] == '\\' {
 							valueStr = valueStr[:len(valueStr)-1] + "]"
 							tag = tag[kv[1]:]
 						} else {
@@ -288,7 +294,10 @@ func (t *StructTagCache[T]) Add(rType reflect.Type) error {
 						tag = tag[kv[1]:]
 					}
 				} else {
-					tag, valueStr = getNextTagValue(tag)
+					tag, valueStr, err = getNextTagValue(tag)
+					if err != nil {
+						return err
+					}
 				}
 				if i == 0 && t.hasName {
 					key = NameTag

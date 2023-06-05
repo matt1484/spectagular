@@ -1,7 +1,6 @@
 package spectagular
 
 import (
-	"fmt"
 	"reflect"
 	"time"
 )
@@ -70,11 +69,15 @@ func (s *sliceResolver) UnmarshalTagOption(field reflect.StructField, tag string
 			tag += ","
 		}
 	}
+	var err error
 	for tag != EmptyTag {
 		if tag[0] == ',' {
 			tag = tag[1:]
 		}
-		tag, valueStr = getNextTagValue(tag)
+		tag, valueStr, err = getNextTagValue(tag)
+		if err != nil {
+			return reflect.ValueOf(nil), err
+		}
 		val, err := s.resolver.UnmarshalTagOption(field, valueStr)
 		if err != nil {
 			return reflect.ValueOf(nil), err
@@ -88,7 +91,6 @@ func (s *sliceResolver) UnmarshalTagOption(field reflect.StructField, tag string
 type durationResolver struct{}
 
 func (d *durationResolver) UnmarshalTagOption(field reflect.StructField, value string) (reflect.Value, error) {
-	fmt.Println(value)
 	dur, err := time.ParseDuration(value)
 	return reflect.ValueOf(dur), err
 }

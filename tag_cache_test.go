@@ -92,6 +92,13 @@ func TestQuotedTags(t *testing.T) {
 			assertEqual(t, tag.Value.String, "has'quotes'", "TestQuotedTags: wrong parsed value:")
 		}
 	}
+	type TestQuotedInvalid struct {
+		Invalid int `test:"s='test string"`
+	}
+	tags, err = cache.GetOrAdd(reflect.TypeOf(TestQuotedInvalid{}))
+	if err == nil {
+		t.Error("TestQuotedTags: failed quoted tags invalidation")
+	}
 }
 
 func TestSpecialTags(t *testing.T) {
@@ -124,7 +131,7 @@ type CustomType struct {
 	C string
 }
 
-func (c CustomType) ResolveTagValue(field reflect.StructField, value string) (reflect.Value, error) {
+func (c CustomType) UnmarshalTagOption(field reflect.StructField, value string) (reflect.Value, error) {
 	return reflect.ValueOf(CustomType{C: value}), nil
 }
 
@@ -219,4 +226,11 @@ func TestTypeConversion(t *testing.T) {
 	assertEqual(t, tags[5].Value.IntList[0], -1, "TestTypeConversion: wrong parsed array value:")
 	assertEqual(t, tags[5].Value.IntList[1], 2, "TestTypeConversion: wrong parsed array value:")
 	assertEqual(t, tags[6].Value.Duration, 5*time.Hour, "TestTypeConversion: wrong parsed duration value:")
+	type TestInvalidArray struct {
+		Arrays int `test:"sa=["`
+	}
+	tags, err = cache.GetOrAdd(reflect.TypeOf(TestInvalidArray{}))
+	if err == nil {
+		t.Error("TestTypeConversion: failed invalid array validation")
+	}
 }
