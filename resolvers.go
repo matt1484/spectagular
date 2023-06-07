@@ -6,7 +6,8 @@ import (
 )
 
 // StructTagOptionUnmarshaler is an interface used to convert a string value extracted
-// from a field's struct tag options and convert it to its expected value.
+// from a field's struct tag options and convert it to its expected value. It should also
+// return any errors involved with processing if any.
 type StructTagOptionUnmarshaler interface {
 	UnmarshalTagOption(field reflect.StructField, value string) (reflect.Value, error)
 }

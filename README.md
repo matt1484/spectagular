@@ -35,3 +35,35 @@ spectagular.ParseTagsForType[JSONStructTag]("json", reflect.TypeOf(&Person{}))
 }}
 */
 ```
+
+## How it works
+`spectagular` supports all the simple go types including:
+- integers: `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`
+- floats: `float32`, `float64`
+- `time.Duration`
+- complex: `complex64`, `complex128`
+- `string`
+- `bool`
+
+as well as pointers/slices (not arrays) of any of the above. There is also support for parsing custom types that implement this interface:
+```golang
+type StructTagOptionUnmarshaler interface {
+    UnmarshalTagOption(field reflect.StructField, value string) (reflect.Value, error)
+}
+```
+
+
+Internally, `strconv` is used to parse most types and `time.ParseDuration` for `time.Duration` fields. Other parsing rules are as follows:
+- Anything with a `structtag` value of `$name` will always match the first field in it's entirety. If it is empty, then it will default to the field name (i.e. how `encoding/json` uses struct tags). 
+- Fields can be marked as `required` which will cause parsing to return an error if the field fails parsing or is not found. If a field is not `required` then errors will be ignored unless they are formatting errors that could affect other fields (i.e. missing an end bracket/quote).
+- Fields are comma delimeted and are expected to be of one of the following forms:
+   - `key=value` (true `bool` values are implicit and dont require value)
+   - `key='value'` (start/end quotes will be ignored and can be escaped with `\\'`. parsing will fail if the end quote isnt matched)
+   - `key=[value,...]` (if the field is a slice then everything between the brackets will be parsed with the above rules, otherwise the brackets will just be ignored. ending brackets that are literal must be escaped with `\\]`)
+
+### Limitations:
+This library does not currently support:
+- `map` (although I guess you could parse JSON)
+- `arrays` (supported slices, but sized arrays are not currently supported)
+- `time.Time` (mostly due to not wanting to deal with varying formats for date strings, Id like to fix this at some point though)
+- matrices (i.e. `[][]int`, having to recursively match inner brackets seems painful and struct tags really shouldnt be used for such complicated logic IMO)
