@@ -21,8 +21,8 @@ type Person struct {
 }
 
 // look at the "json" struct tags and convert the options to type JSONStructTag
-spectagular.ParseTagsForType[JSONStructTag]("json", reflect.TypeOf(&Person{}))
-// this will return a []spectagular.FieldTag that is equivalent to:
+fieldTags, err := spectagular.ParseTagsForType[JSONStructTag]("json", reflect.TypeOf(&Person{}))
+// fieldTags is a []spectagular.FieldTag that is equivalent to:
 /*
 []FieldTag{{ 
     FieldName: "Name",
@@ -34,6 +34,15 @@ spectagular.ParseTagsForType[JSONStructTag]("json", reflect.TypeOf(&Person{}))
     Value: JSONStructTag{ Name: "age", OmitEmpty: false, String: false },
 }}
 */
+```
+
+You can even set up a cache of parsed tags which is good for repetitive workflows like web servers.
+
+```golang
+// functionally equivalent to the above example
+cache, err := spectagular.NewFieldTagCache[JSONStructTag]("json")
+fieldTags, err := cache.GetOrAdd(reflect.TypeOf(&Person{}))
+// there are also individual Get/Add methods
 ```
 
 ## How it works
