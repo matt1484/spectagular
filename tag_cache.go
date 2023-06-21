@@ -230,7 +230,8 @@ func getNextTagValue(tag string) (string, string, error) {
 
 // Add parses the struct tags from the type given and adds them to the internal cache while
 // returning any validation errors found.
-func (t *StructTagCache[T]) Add(rType reflect.Type) error {
+func (t *StructTagCache[T]) Add(sourceRType reflect.Type) error {
+	rType := sourceRType
 	kind := rType.Kind()
 	if kind == reflect.Pointer || kind == reflect.Array {
 		kind = rType.Elem().Kind()
@@ -342,7 +343,7 @@ func (t *StructTagCache[T]) Add(rType reflect.Type) error {
 		}
 		return fmt.Errorf("missing required tag fields: %s", requiredTags)
 	}
-	t.typeToTags[rType] = fieldTags
+	t.typeToTags[sourceRType] = fieldTags
 	return nil
 }
 
