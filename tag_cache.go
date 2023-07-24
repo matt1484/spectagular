@@ -253,8 +253,24 @@ func (t *StructTagCache[T]) Add(sourceRType reflect.Type) error {
 		tag = field.Tag.Get(t.tagName)
 		field = rType.Field(i)
 		if field.PkgPath != "" || field.Anonymous {
+			ttag, ok := t.structTagMap["$anonymous"]
+			if ok {
+				if field.Anonymous {
+					value := new(T)
+					ft := FieldTag[T]{
+						FieldName:  field.Name,
+						FieldIndex: i,
+					}
+					ftv := reflect.Indirect(reflect.ValueOf(value))
+					ftv.Index(ttag.FieldIndex).SetBool(true)
+					ft.Value = *value
+					fieldTags = append(fieldTags, ft)
+				}
+
+			}
 			continue
 		}
+
 		value := new(T)
 		ft := FieldTag[T]{
 			FieldName:  field.Name,
