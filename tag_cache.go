@@ -246,11 +246,9 @@ func (t *StructTagCache[T]) Add(rType reflect.Type) error {
 	var valueStr string
 	var err error
 	fieldTags := make([]FieldTag[T], 0)
-	requiredTags := make([]string, 0)
 	for i := 0; i < rType.NumField(); i++ {
 		field = rType.Field(i)
 		tag = field.Tag.Get(t.tagName)
-		field = rType.Field(i)
 		if field.PkgPath != "" || field.Anonymous {
 			continue
 		}
@@ -261,6 +259,7 @@ func (t *StructTagCache[T]) Add(rType reflect.Type) error {
 		}
 		ftv := reflect.Indirect(reflect.ValueOf(value))
 		var v reflect.Value
+		requiredTags := make([]string, 0)
 		for i := 0; ; i++ {
 			valueStr = ""
 			kv := keyValueRegex.FindStringSubmatchIndex(tag)
@@ -325,22 +324,22 @@ func (t *StructTagCache[T]) Add(rType reflect.Type) error {
 				break
 			}
 		}
+		if len(requiredTags) != len(t.requiredTags) {
+			requiredMap := make(map[string]struct{})
+			for _, r := range t.requiredTags {
+				requiredMap[r] = struct{}{}
+			}
+			for _, r := range requiredTags {
+				delete(requiredMap, r)
+			}
+			requiredTags := make([]string, 0)
+			for r := range requiredMap {
+				requiredTags = append(requiredTags, r)
+			}
+			return fmt.Errorf("missing required tag fields: %s for struct field: %s", requiredTags, field.Name)
+		}
 		ft.Value = *value
 		fieldTags = append(fieldTags, ft)
-	}
-	if len(requiredTags) != len(t.requiredTags) {
-		requiredMap := make(map[string]struct{})
-		for _, r := range t.requiredTags {
-			requiredMap[r] = struct{}{}
-		}
-		for _, r := range requiredTags {
-			delete(requiredMap, r)
-		}
-		requiredTags := make([]string, 0)
-		for r := range requiredMap {
-			requiredTags = append(requiredTags, r)
-		}
-		return fmt.Errorf("missing required tag fields: %s", requiredTags)
 	}
 	t.typeToTags[rType] = fieldTags
 	return nil
