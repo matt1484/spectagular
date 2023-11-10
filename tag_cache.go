@@ -228,14 +228,19 @@ func getNextTagValue(tag string) (string, string, error) {
 	return tag, valueStr, nil
 }
 
+func (t *StructTagCache[T]) actualType(rType reflect.Type) reflect.Type {
+	kind := rType.Kind()
+	if kind == reflect.Pointer || kind == reflect.Array || kind == reflect.Slice {
+		return t.actualType(rType.Elem())
+	}
+	return rType
+}
+
 // Add parses the struct tags from the type given and adds them to the internal cache while
 // returning any validation errors found.
 func (t *StructTagCache[T]) Add(rType reflect.Type) error {
+	rType = t.actualType(rType)
 	kind := rType.Kind()
-	if kind == reflect.Pointer || kind == reflect.Array {
-		kind = rType.Elem().Kind()
-		rType = rType.Elem()
-	}
 	if kind != reflect.Struct {
 		return errors.New("FieldTagCache cannot cache non struct types")
 	}
@@ -347,6 +352,7 @@ func (t *StructTagCache[T]) Add(rType reflect.Type) error {
 
 // Get returns a []FieldTag for a type if it is found in the cache.
 func (t *StructTagCache[T]) Get(rType reflect.Type) ([]FieldTag[T], bool) {
+	rType = t.actualType(rType)
 	tags, ok := t.typeToTags[rType]
 	return tags, ok
 }
@@ -354,6 +360,7 @@ func (t *StructTagCache[T]) Get(rType reflect.Type) ([]FieldTag[T], bool) {
 // GetOrAdd returns a []FieldTag for a type if it is found in the cache and adds/returns it
 // otherwise.
 func (t *StructTagCache[T]) GetOrAdd(rType reflect.Type) ([]FieldTag[T], error) {
+	rType = t.actualType(rType)
 	tags, ok := t.typeToTags[rType]
 	if !ok {
 		err := t.Add(rType)

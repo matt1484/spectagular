@@ -170,6 +170,18 @@ func TestTypeConversion(t *testing.T) {
 	if err != nil || tags == nil {
 		t.Error("TestTypeConversion: failed string tags validation", err.Error())
 	}
+
+	if _, ok := cache.Get(reflect.TypeOf(&TestStringValid{})); !ok {
+		t.Error("TestTypeConversion: failed pointer type retrieval", err.Error())
+	}
+
+	if _, ok := cache.Get(reflect.TypeOf([]TestStringValid{})); !ok {
+		t.Error("TestTypeConversion: failed array type retrieval", err.Error())
+	}
+
+	if _, ok := cache.Get(reflect.TypeOf([]*TestStringValid{})); !ok {
+		t.Error("TestTypeConversion: failed array pointer type retrieval", err.Error())
+	}
 	// only testing the field name/index here since it should be the same process for each
 	assertEqual(t, tags[0].FieldIndex, 0, "TestTypeConversion: wrong field index:")
 	assertEqual(t, tags[0].FieldName, "Empty", "TestTypeConversion: wrong field name:")
