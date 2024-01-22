@@ -150,12 +150,13 @@ func NewFieldTagCache[T any](tagName string) (*StructTagCache[T], error) {
 		}
 		tags := field.Tag.Get(StructTagTag)
 		structTag := StructTagOption{FieldIndex: i}
-		for n, o := range append(strings.Split(tags, ","), strings.ToLower(field.Name)) {
+		opts := strings.Split(tags, ",")
+		for n, o := range append(opts, strings.ToLower(field.Name)) {
 			if n == 0 {
 				if o != "-" {
 					structTag.Name = o
 				}
-			} else {
+			} else if n != len(opts) {
 				if o == RequiredTag {
 					structTag.Required = true
 				}
